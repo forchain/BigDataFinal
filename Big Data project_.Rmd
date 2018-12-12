@@ -8,8 +8,8 @@ output:
 We start by loading the data
 ```{r}
 library(dplyr)
-folder <- "C:\\Users\\IBM_ADMIN\\Downloads\\School-Data-Prediction\\"
-#folder <- "/Users/Tony/my/AUS/BigData/Data/School-Data-Prediction/"
+#folder <- "C:\\Users\\IBM_ADMIN\\Downloads\\School-Data-Prediction\\"
+folder <- "/Users/Tony/my/AUS/BigData/Data/School-Data-Prediction/"
 filename <- "EGMA_NOV_2018.csv"
 path <- paste0(folder , filename)
 df = read.csv(path, na.strings=c("","NA"))
@@ -107,7 +107,7 @@ Likewise, we can remove individual question score columns that don't contain "sc
 ```{r}
 #install.packages("dplyr")
 #library(dplyr)
-keeps = c("Section", "EMIS.Code", "School", "Cluster", "Tehsil", "Distt.", "Gender", "Time_Difference_Seconds", "Overall_.Accuracy","Month", "Date", "Hour")
+keeps = c("Section", "EMIS.Code", "Cluster", "Tehsil", "Distt.", "Gender", "Time_Difference_Seconds", "Overall_.Accuracy","Month", "Date", "Hour")
 
 df_accuracy <- dplyr::select(df_score_hierarchy, contains("Accuracy"))
 df_score <- dplyr::select(df_score_hierarchy, contains("Score"))
