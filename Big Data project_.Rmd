@@ -1,0 +1,166 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+
+We start by loading the data
+```{r}
+library(dplyr)
+folder <- "C:\\Users\\IBM_ADMIN\\Downloads\\School-Data-Prediction\\"
+#folder <- "/Users/Tony/my/AUS/BigData/Data/School-Data-Prediction/"
+filename <- "EGMA_NOV_2018.csv"
+path <- paste0(folder , filename)
+df = read.csv(path, na.strings=c("","NA"))
+df <- df[,colSums(is.na(df))<nrow(df)] #remove columns that have all NA's
+
+prefix <- "EGMA.S.Q02_english_"
+
+# don't why this is not working
+# sapply(names(df1),function(x)  names(df1)[names(df1) == x] <- gsub("EGMA.S.Q02_english_", "", x))
+
+# remove prefix in order to adapt to different datasets
+for(n in names(df)) if(startsWith(n, prefix)) names(df)[names(df) == n] <- gsub(prefix, "", n)
+
+
+# remove absent students
+
+df <- (df %>% filter(!is.na(Time_Difference_Seconds) & Time_Difference_Seconds > 0))
+cat(nrow(df),ncol(df))
+```
+
+We can then split the data into two data frames. One for data dictionary columns and one for score-hierarchy columns. After we are done cleaning them separately, we can combine them
+```{r}
+
+data_dict_cols = c("User.ID", "Grade", "Status", "Course", "Teacher.ID", "School", "EMIS.Code", "TLA.ID", "Cluster", "Tehsil", "Distt.", "Father.Name", "Age.Years.", "Gender", "Section", "Start_Time","End_Time", "Time_Difference_Seconds", "Latitude", "Longitude")
+#df_data_dict = df[,data_dict_cols]  
+df_score_hierarchy <- df[, -which(names(df) %in% data_dict_cols)]
+
+#names(df_data_dict)
+#names(df_score_hierarchy)
+
+```
+
+We now have 2 data frames to clean. We will start with the data dictionary values data frame. We can start by removing values that contain mostly NA's
+```{r}
+#install.packages("Amelia")
+#library(Amelia)
+#Amelia::missmap(df_data_dict)
+sum.list <- sapply(df,function(x) sum(is.na(x)) )
+head(sum.list[sum.list>0],19)
+```
+We can see that latitude, longitude,age and time difference have mostly NA values so we can remove those columns. Start time, end time and time difference have fewer missing values. We will examine whether to impute them or remove them.
+```{r}
+cols2remove = c("Age.Years.", "Latitude", "Longitude")
+df = df[, -which(names(df) %in% cols2remove)]
+head(names(df), 19)
+```
+We can look for other inconsistencies in the data
+```{r include=FALSE}
+# TODO: too annoying, show output later
+summary(df)
+```
+We can remove user ID because it is a nominal value which does not affect the student's score.
+
+All the students belong to the same grade. So the grade column is unnecessary. The same goes for status. All the values converted to binary TRUE values. We can hence remove this column.
+
+The course column combines Distt. and grade. We know all the students are in grade 2 so we can strip that part. However, the first part of the course variable just seems to be the city name. Since we already have location data at a finer level (district, tehsil, cluster), we can ignore the city name. Hence, we can remove the column.
+
+Furthermore, since we have the unique school ID, we can remove the school name. We must convert EMIS.CODE from numeric to factor
+
+
+There is a single value for teacher ID and that is "not registered". We can get rid of this column.
+
+Father name has 5 values of male, 5 values of female and the remaining values are .'s. It does not seem to add any value to our analysis. We can remove it.
+
+TLA.ID is an identifier consisting of various existing features, also needs removing
+
+```{r}
+cols2remove = c("User.ID", "Grade", "Status", "Course", "Teacher.ID", "Father.Name", "TLA.ID")
+df = df[,-which(names(df) %in% cols2remove)]
+df$EMIS.Code = as.factor(df$EMIS.Code)
+head(names(df), 19)
+```
+We can split EGMA.S.Q02_english_Start_Time to date and time values. We can do this because the date on which the exam is taken might affect the students' score. We must also split EGMA.S.Q02_english_End_Time to get the end time value so we can know the time the student took to complete the exam. 
+```{r}
+#import.packages("NLP")
+#library(NLP)
+#df$Date = as.Date(df$EGMA.S.Q02_english_Start_Time, format="%m/%d/%Y %H:%M:%S")
+df$Month <- substr(df[, colnames(df) == "Start_Time"], 1, 2)
+df$Date <- substr(df[, colnames(df) == "Start_Time"], 4, 5)
+df$Hour <- substr(df[, colnames(df) == "Start_Time"], 12, 13)
+
+#df$EGMA.S.Q02_english_Start_Time = as.POSIXct(df$EGMA.S.Q02_english_Start_Time, format="%m/%d/%Y %H:%M:%S")
+#df$EGMA.S.Q02_english_End_Time = as.POSIXct(df$EGMA.S.Q02_english_End_Time, format="%m/%d/%Y %H:%M:%S")
+#df$EGMA.S.Q02_english_Time_Difference_Seconds = df$EGMA.S.Q02_english_End_Time - df$EGMA.S.Q02_english_Start_Time 
+
+```
+
+```{r}
+head(names(df),19)
+```
+
+We can remove all columns from unit, topic, and SLO without "accuracy" in them.
+
+Likewise, we can remove individual question score columns that don't contain "score"
+```{r}
+#install.packages("dplyr")
+#library(dplyr)
+keeps = c("Section", "EMIS.Code", "School", "Cluster", "Tehsil", "Distt.", "Gender", "Time_Difference_Seconds", "Overall_.Accuracy","Month", "Date", "Hour")
+
+df_accuracy <- dplyr::select(df_score_hierarchy, contains("Accuracy"))
+df_score <- dplyr::select(df_score_hierarchy, contains("Score"))
+
+# remove duplated accuracy columns
+df_accuracy <- df_accuracy %>% select(-Question_001_overall_.accuracy, -Question_002_overall_.accuracy, -Question_003_overall_.accuracy, -Overall_.Accuracy)
+
+keeps = append(keeps, names(df_score))
+keeps = append(keeps, names(df_accuracy))
+
+df = df[,keeps] 
+colnames(df)
+```
+
+
+Next, we can convert the percentage score values to success (1) or failure (0) values based on a threshold that we set
+```{r}
+df$Success = ifelse(df$Overall_.Accuracy>70, 1,0)
+df$Success = as.factor(df$Success)
+```
+
+
+Build SVM model
+```{r}
+library(caret)
+library(glmnet)
+set.seed(123)
+training.samples <- df$Overall_.Accuracy %>% createDataPartition(p = 0.8, list = FALSE)
+train.data  <- df[training.samples, ]
+test.data <- df[-training.samples, ]
+
+```
+
+
+```{r}
+library(e1071)
+model <- svm(Success~Section + EMIS.Code + Gender + Date, data=train.data, probability=TRUE,scale=TRUE)
+```
+
+
+```{r}
+summary(model)
+```
+```{r}
+library(dplyr)
+observed.classes <- test.data$Overall_.Accuracy
+test.data.for.prediction <- data.frame(test.data$Section, test.data$EMIS.Code, test.data$Gender, test.data$Date)
+names(test.data.for.prediction) = c("Section", "EMIS.Code", "Gender", "Date")
+pred <- predict(model, test.data.for.prediction, na.action = na.exclude)
+mean(pred == observed.classes, na.omit=TRUE)
+```
+```{r}
+table(pred, observed.classes)
+```
+
+
