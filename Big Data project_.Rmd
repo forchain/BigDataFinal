@@ -8,8 +8,8 @@ output:
 We start by loading the data
 ```{r}
 library(dplyr)
-#folder <- "C:\\Users\\IBM_ADMIN\\Downloads\\School-Data-Prediction\\"
-folder <- "/Users/Tony/my/AUS/BigData/Data/School-Data-Prediction/"
+folder <- "C:\\Users\\IBM_ADMIN\\Downloads\\School-Data-Prediction\\"
+#folder <- "/Users/Tony/my/AUS/BigData/Data/School-Data-Prediction/"
 filename <- "EGMA_NOV_2018.csv"
 path <- paste0(folder , filename)
 df = read.csv(path, na.strings=c("","NA"))
@@ -91,6 +91,10 @@ df$Month <- substr(df[, colnames(df) == "Start_Time"], 1, 2)
 df$Date <- substr(df[, colnames(df) == "Start_Time"], 4, 5)
 df$Hour <- substr(df[, colnames(df) == "Start_Time"], 12, 13)
 
+df$Month = as.factor(df$Month)
+df$Date = as.factor(df$Date)
+df$Hour = as.factor(df$Hour)
+
 #df$EGMA.S.Q02_english_Start_Time = as.POSIXct(df$EGMA.S.Q02_english_Start_Time, format="%m/%d/%Y %H:%M:%S")
 #df$EGMA.S.Q02_english_End_Time = as.POSIXct(df$EGMA.S.Q02_english_End_Time, format="%m/%d/%Y %H:%M:%S")
 #df$EGMA.S.Q02_english_Time_Difference_Seconds = df$EGMA.S.Q02_english_End_Time - df$EGMA.S.Q02_english_Start_Time 
@@ -107,7 +111,7 @@ Likewise, we can remove individual question score columns that don't contain "sc
 ```{r}
 #install.packages("dplyr")
 #library(dplyr)
-keeps = c("Section", "EMIS.Code", "Cluster", "Tehsil", "Distt.", "Gender", "Time_Difference_Seconds", "Overall_.Accuracy","Month", "Date", "Hour")
+keeps = c("Section", "EMIS.Code", "School", "Cluster", "Tehsil", "Distt.", "Gender", "Time_Difference_Seconds", "Overall_.Accuracy","Month", "Date", "Hour")
 
 df_accuracy <- dplyr::select(df_score_hierarchy, contains("Accuracy"))
 df_score <- dplyr::select(df_score_hierarchy, contains("Score"))
@@ -144,21 +148,23 @@ test.data <- df[-training.samples, ]
 
 ```{r}
 library(e1071)
-model <- svm(Success~Section + EMIS.Code + Gender + Date, data=train.data, probability=TRUE,scale=TRUE)
+svm.model <- svm(Success ~ Gender + EMIS.Code + Month + Date + Hour, data=train.data, scale=TRUE, na.action = na.fail, probability=TRUE)
 ```
 
 
 ```{r}
-summary(model)
+summary(svm.model)
 ```
 ```{r}
 library(dplyr)
-observed.classes <- test.data$Overall_.Accuracy
-test.data.for.prediction <- data.frame(test.data$Section, test.data$EMIS.Code, test.data$Gender, test.data$Date)
-names(test.data.for.prediction) = c("Section", "EMIS.Code", "Gender", "Date")
-pred <- predict(model, test.data.for.prediction, na.action = na.exclude)
+observed.classes <- test.data$Success
+test.data.for.prediction <- data.frame(test.data$Gender, test.data$EMIS.Code, test.data$Month, test.data$Date, test.data$Hour)
+names(test.data.for.prediction) = c("Gender", "EMIS.Code", "Month", "Date", "Hour")
+pred <- predict(svm.model, test.data.for.prediction, na.action = na.exclude)
 mean(pred == observed.classes, na.omit=TRUE)
 ```
+
+
 ```{r}
 table(pred, observed.classes)
 ```
